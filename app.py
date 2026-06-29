@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 
+from src.collectors.greenhouse import get_jobs
+from src.filters.management_filter import remove_management_jobs
+
 st.set_page_config(
     page_title="Job Search Automation",
     layout="wide"
@@ -8,9 +11,17 @@ st.set_page_config(
 
 st.title("🚀 Job Search Automation")
 
-# Role Dropdown
+# ATS Selection
+ats = st.selectbox(
+    "ATS Platform",
+    [
+        "Greenhouse"
+    ]
+)
+
+# Role Selection
 role = st.selectbox(
-    "Select Role",
+    "Role",
     [
         "All",
         "DevOps Engineer",
@@ -24,50 +35,76 @@ role = st.selectbox(
 # Posted Date
 posted = st.radio(
     "Posted Within",
-    ["24 Hours", "48 Hours", "7 Days"]
+    [
+        "24 Hours",
+        "48 Hours",
+        "7 Days"
+    ]
 )
 
-try:
-    df = pd.read_csv("output/jobs.csv")
+# Keyword Search
+search_text = st.text_input("Keyword Search")
 
-    st.success(f"Loaded {len(df)} jobs")
+# Search Button
+if st.button("🔍 Search Jobs"):
 
-    # Search box
-    search = st.text_input("Search Jobs")
+    # Fetch live jobs
+    jobs = get_jobs()
 
-    if search:
-        df = df[
-            df["Title"].str.contains(
-                search,
-                case=False,
-                na=False
-            )
+    df = pd.DataFrame(jobs)
+
+    # Remove management roles
+    df = remove_management_jobs(df)
+
+    # Role Keywords
+    role_keywords = {
+        "DevOps Engineer": [
+            "devops"
+        ],
+        "Site Reliability Engineer": [
+            "site reliability",
+            "sre"
+        ],
+        "Platform Engineer": [
+            "platform"
+        ],
+        "Data Platform Engineer": [
+            "data platform",
+            "lakehouse"
+        ],
+        "Data Engineer": [
+            "data engineer"
         ]
+    }
 
-    # Role filter
+    # Apply Role Filter
     if role != "All":
-        role_word = role.split()[0]
+
+        keywords = role_keywords.get(role, [])
 
         df = df[
-            df["Title"].str.contains(
-                role_word,
+            df["title"].str.lower().apply(
+                lambda title: any(
+                    keyword in title
+                    for keyword in keywords
+                )
+            )
+        ]
+
+    # Keyword Search
+    if search_text:
+
+        df = df[
+            df["title"].str.contains(
+                search_text,
                 case=False,
                 na=False
             )
         ]
 
-    st.subheader("Job Results")
+    st.success(f"Found {len(df)} jobs")
 
-    st.write(
-        df.to_html(
-            render_links=True,
-            escape=False,
-            index=False
-        ),
-        unsafe_allow_html=True
-    )
-
-except FileNotFoundError:
-    st.error(
-        "jobs.csv not found. Run main.py first."
+    st.dataframe(
+        df,
+        width="stretch"
     )
